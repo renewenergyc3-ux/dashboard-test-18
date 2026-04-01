@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PEA Dashboard - Digital Service</title>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --pea-purple: #6c2d91;
+            --pea-purple-light: #8e44ad;
+            --pea-gold: #ffc107;
+            --pea-bg: #f8f9fa;
+            --gray-selected: #d1d1d1;
+        }
+
+        body { font-family: 'Sarabun', sans-serif; background-color: var(--pea-bg); margin: 0; padding-bottom: 50px; }
+        
+        /* Navbar */
+        .navbar {
+            background: #fff; padding: 15px 5%; display: flex; align-items: center; justify-content: space-between;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1); position: sticky; top: 0; z-index: 1000; border-bottom: 4px solid var(--pea-purple);
+        }
+        .brand { display: flex; align-items: center; gap: 15px; }
+        .brand img { height: 60px; }
+        .brand h1 { font-size: 1.2rem; color: var(--pea-purple); margin: 0; }
+
+        .controls { display: flex; align-items: center; gap: 15px; }
+        .btn-print { 
+            background: var(--pea-purple); color: white; border: none; padding: 10px 20px; 
+            border-radius: 8px; cursor: pointer; font-weight: 600; transition: 0.3s;
+        }
+        .btn-print:hover { background: var(--pea-purple-light); }
+
+        /* Filter Box */
+        .filter-container { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 5px 15px; min-width: 320px; }
+        .filter-label { font-size: 0.85rem; font-weight: 600; color: var(--pea-purple); }
+        select { border: none; width: 100%; padding: 5px; outline: none; font-family: 'Sarabun'; cursor: pointer; }
+
+        /* Container & Cards */
+        .container { max-width: 1400px; margin: 30px auto; padding: 0 20px; }
+        .card { background: #fff; border-radius: 15px; padding: 25px; margin-bottom: 25px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); }
+        .card-title { border-left: 5px solid var(--pea-gold); padding-left: 15px; margin-bottom: 20px; font-size: 1.1rem; color: var(--pea-purple); font-weight: 600; }
+
+        /* Chart */
+        .chart-wrapper { height: 400px; width: 100%; position: relative; }
+        canvas { cursor: pointer; }
+
+        /* Table */
+        .table-responsive { overflow-x: auto; border-radius: 10px; border: 1px solid #eee; }
+        table { width: 100%; border-collapse: collapse; background: white; font-size: 0.9rem; }
+        th { background: #f4f4f4; color: var(--pea-purple); padding: 15px; text-align: left; white-space: nowrap; }
+        td { padding: 12px 15px; border-bottom: 1px solid #f1f1f1; }
+        tr:hover td { background: #fdfbff; }
+
+        /* Printing */
+        @media print {
+            .navbar, .btn-print, .filter-container { display: none !important; }
+            .card { box-shadow: none; border: 1px solid #ddd; page-break-inside: avoid; }
+            body { background: white; }
+        }
+
+        /* Loading */
+        #loader { position: fixed; inset: 0; background: rgba(255,255,255,0.9); display: flex; justify-content: center; align-items: center; z-index: 9999; flex-direction: column; }
+        .spinner { width: 50px; height: 50px; border: 5px solid #f3f3f3; border-top: 5px solid var(--pea-purple); border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+<div id="loader">
+    <div class="spinner"></div>
+    <p style="margin-top: 15px; color: var(--pea-purple);">กำลังดาวน์โหลดข้อมูลระบบ PEA...</p>
+</div>
+
+<div class="navbar">
+    <div class="brand">
+        <img src="LOGO_PEA.jpg" alt="PEA Logo" onerror="this.src='https://upload.wikimedia.org/wikipedia/th/a/a2/Provincial_Electricity_Authority_Logo.png'">
+        <h1>ระบบวิเคราะห์ข้อมูลสถิติรายพื้นที่ (Dashboard)</h1>
+    </div>
+    <div class="controls">
+        <div class="filter-container">
+            <div class="filter-label">เลือกการไฟฟ้าในพื้นที่ :</div>
+            <select id="areaFilter" onchange="handleAreaChange()">
+                <option value="ALL">-- แสดงผลการไฟฟ้าทั้งหมด --</option>
+            </select>
+        </div>
+        <button class="btn-print" onclick="window.print()">พิมพ์ PDF</button>
+    </div>
+</div>
+
+<div class="container">
+    <div class="card">
+        <div class="card-title">สัดส่วนข้อมูลตามสถานะ</div>
+        <div class="chart-wrapper">
+            <canvas id="mainChart"></canvas>
+        </div>
+        <p style="font-size: 0.8rem; color: #666; margin-top: 10px;">* คลิกที่แท่งกราฟเพื่อกรองข้อมูลในตาราง / คลิกที่ว่างเพื่อแสดงทั้งหมด</p>
+    </div>
+
+    <div class="card">
+        <div class="card-title" id="tableTitle">รายละเอียดรายการข้อมูล</div>
+        <div class="table-responsive">
+            <table>
+                <thead><tr id="tableHead"></tr></thead>
+                <tbody id="tableBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    const SHEET_ID = '15SClvSIvKz9o06xrxUkeenAAXSvjn4SRo9Dyx8GCRY0';
+    const URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tq=SELECT%20*`;
+    
+    // คอลัมน์ที่ต้องการแสดง A, B, C, H, I, J, M, O
+    const DISPLAY_COLS = [0, 1, 2, 7, 8, 9, 12, 14];
+    const COL_STATUS = 1; // Col B
+    const COL_AREA_CODE = 14; // Col O
+
+    const MASTER_STATUS_ORDER = [
+        "ยกเลิก", "รอตรวจสอบคำขอ", "รอตรวจสอบคำขอ (เกิน SLA)", "รอผู้ยื่นคำขอส่งเอกสารแก้ไข",
+        "รออนุมัติเชื่อมต่อ/รับพิจารณา", "รอชำระเงิน", "รอดำเนินการหลังอนุมัติเชื่อมต่อ / รับพิจารณา",
+        "รอแก้ไขเอกสารหลังอนุมัติเชื่อมต่อ / รับพิจารณา", "รอตรวจสอบระบบผลิต",
+        "รออนุมัติเชื่อมต่อ (200 kW ขึ้นไป)", "รอทดสอบเชื่อมต่อ", "รออนุมัติแจ้งวันเริ่มเชื่อมต่อ", "เชื่อมต่อเรียบร้อยแล้ว"
+    ];
+
+    const COLORS = ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#C9CBCF', '#45aaf2', '#26de81', '#fed330', '#a55eea', '#fc5c65', '#20bf6b'];
+
+    let rawData = [], headers = [], chartObj = null, activeStatusFilter = null;
+
+    async function init() {
+        try {
+            const res = await fetch(URL);
+            const text = await res.text();
+            const json = JSON.parse(text.substring(47).slice(0, -2));
+            headers = json.table.cols;
+            rawData = json.table.rows;
+            
+            setupAreaDropdown();
+            renderHeaders();
+            updateDashboard();
+            document.getElementById('loader').style.display = 'none';
+        } catch (err) { alert("ดึงข้อมูลไม่สำเร็จ: " + err.message); }
+    }
+
+    function setupAreaDropdown() {
+        const select = document.getElementById('areaFilter');
+        // ดึงค่าไม่ซ้ำจากคอลัมน์ O
+        const areas = [...new Set(rawData.map(r => r.c[COL_AREA_CODE]?.v))].filter(v => v).sort((a,b) => parseFloat(a) - parseFloat(b));
+        
+        areas.forEach(area => {
+            const opt = document.createElement('option');
+            opt.value = area;
+            // จัดรูปแบบให้ดูง่าย: ถ้ามีทศนิยมให้ย่อหน้า
+            const prefix = area.split(' ')[0];
+            if (prefix.includes('.')) {
+                opt.innerText = "   └─ " + area;
+            } else {
+                opt.innerText = "🏢 " + area;
+                opt.style.fontWeight = "bold";
+                opt.style.backgroundColor = "#f0f0f0";
+            }
+            select.appendChild(opt);
+        });
+    }
+
+    function renderHeaders() {
+        const headRow = document.getElementById('tableHead');
+        DISPLAY_COLS.forEach(idx => {
+            const th = document.createElement('th');
+            th.innerText = headers[idx].label || `Column ${idx}`;
+            headRow.appendChild(th);
+        });
+    }
+
+    function handleAreaChange() {
+        activeStatusFilter = null; // รีเซ็ตสถานะกราฟเมื่อเปลี่ยนพื้นที่
+        updateDashboard();
+    }
+
+    function updateDashboard() {
+        const areaValue = document.getElementById('areaFilter').value;
+        let filtered = rawData;
+
+        // Logic กรองพื้นที่ตามโจทย์
+        if (areaValue !== "ALL") {
+            const prefix = areaValue.split(' ')[0];
+            const isParent = !prefix.includes('.');
+
+            filtered = rawData.filter(r => {
+                const val = (r.c[COL_AREA_CODE]?.v || "").trim();
+                const rowPrefix = val.split(' ')[0];
+                if (isParent) {
+                    // ถ้าเลือกจุดรวมงาน เช่น "12" ให้หาทั้ง "12" และ "12.x" ทั้งหมด
+                    return rowPrefix === prefix || rowPrefix.startsWith(prefix + ".");
+                } else {
+                    // ถ้าเลือกย่อย เช่น "12.1" ให้เอาเฉพาะค่าเป๊ะๆ
+                    return val === areaValue;
+                }
+            });
+        }
+
+        renderChart(filtered);
+        
+        // กรองตามการคลิกกราฟ
+        const tableData = activeStatusFilter 
+            ? filtered.filter(r => (r.c[COL_STATUS]?.v || "").trim() === activeStatusFilter)
+            : filtered;
+            
+        renderTable(tableData);
+    }
+
+    function renderChart(data) {
+        const counts = {};
+        data.forEach(r => {
+            const s = (r.c[COL_STATUS]?.v || "ไม่ระบุ").trim();
+            counts[s] = (counts[s] || 0) + 1;
+        });
+
+        const labels = [], values = [], bgColors = [];
+        MASTER_STATUS_ORDER.forEach((s, idx) => {
+            if (counts[s]) {
+                labels.push(s);
+                values.push(counts[s]);
+                // เงื่อนไขเปลี่ยนสีเป็นสีเทาเมื่อไม่ได้เลือก
+                if (!activeStatusFilter) {
+                    bgColors.push(COLORS[idx % COLORS.length]);
+                } else {
+                    bgColors.push(s === activeStatusFilter ? COLORS[idx % COLORS.length] : '#e0e0e0');
+                }
+            }
+        });
+
+        const ctx = document.getElementById('mainChart').getContext('2d');
+        if (chartObj) chartObj.destroy();
+
+        chartObj = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: values,
+                    backgroundColor: bgColors,
+                    borderRadius: 5,
+                    barThickness: 35
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                onClick: (e, items) => {
+                    if (items.length > 0) {
+                        const clickedLabel = labels[items[0].index];
+                        activeStatusFilter = (activeStatusFilter === clickedLabel) ? null : clickedLabel;
+                    } else {
+                        activeStatusFilter = null;
+                    }
+                    updateDashboard();
+                },
+                onHover: (e, items) => { e.native.target.style.cursor = items.length > 0 ? 'pointer' : 'default'; },
+                plugins: { legend: { display: false } },
+                scales: { 
+                    y: { beginAtZero: true, grid: { color: '#f0f0f0' } },
+                    x: { grid: { display: false }, ticks: { font: { size: 11 } } }
+                }
+            }
+        });
+    }
+
+    function renderTable(data) {
+        const tbody = document.getElementById('tableBody');
+        const title = document.getElementById('tableTitle');
+        tbody.innerHTML = "";
+        
+        title.innerText = activeStatusFilter 
+            ? `รายละเอียดข้อมูล - เฉพาะสถานะ: ${activeStatusFilter} (${data.length} รายการ)` 
+            : `รายละเอียดรายการข้อมูลทั้งหมด (${data.length} รายการ)`;
+
+        data.forEach(row => {
+            const tr = document.createElement('tr');
+            DISPLAY_COLS.forEach(idx => {
+                const td = document.createElement('td');
+                const cell = row.c[idx];
+                td.innerText = cell ? (cell.f || cell.v) : '-';
+                tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+        });
+    }
+
+    init();
+</script>
+</body>
+</html>
